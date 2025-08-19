@@ -1,0 +1,35 @@
+# Environment
+.env
+env/
+myenv/
+__pycache__/
+*.pyc
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Python packaging
+*.egg-info/
+*.egg
+dist/
+build/
+
+# IDE settings
+.vscode/
+.idea/
+
+# Databases
+*.db
+db/chat_history.db
+
+# Vector DB & data files
+data/chromadb/
+data/uploaded_pdfs/
+
+# Logs
+*.log
+logs/
+
+# Streamlit cache
+.streamlit/
