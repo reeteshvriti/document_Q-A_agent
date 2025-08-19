@@ -26,6 +26,8 @@ db/chat_history.db
 # Vector DB & data files
 data/chromadb/
 data/uploaded_pdfs/
+data/raw/
+data/processed/
 
 # Logs
 *.log
