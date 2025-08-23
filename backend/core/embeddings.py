@@ -65,3 +65,5 @@ for file in files:
         print(f"Inserted {len(vectors)} chunks from {file} into Pinecone.")
 
 print(" All chunks embedded and stored in Pinecone.")
+
+
