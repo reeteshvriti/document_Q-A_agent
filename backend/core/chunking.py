@@ -1,16 +1,8 @@
 import os
 import json
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from config import BASE_DIR, CHUNKS_DIR, PROCESSED_DIR
 
-# ------------------------------
-# Project Root Path Handling
-# ------------------------------
-# Get project root (2 levels up from backend/core/)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-
-# Define directories consistently
-PROCESSED_DIR = os.path.join(BASE_DIR, "data", "processed")
-CHUNKS_DIR = os.path.join(BASE_DIR, "data", "chunks")
 
 # Ensure chunks directory exists
 os.makedirs(CHUNKS_DIR, exist_ok=True)
