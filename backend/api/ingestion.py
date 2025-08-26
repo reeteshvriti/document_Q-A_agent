@@ -1,5 +1,3 @@
-
-
 """
 Ingestion module for multi-PDF RAG pipeline (Phase 1).
 
@@ -8,10 +6,8 @@ Responsibilities:
 - Extract text and (optionally) tables page-by-page with metadata.
 - Persist processed pages as JSON into a structured output directory.
 - Provide functions reusable from FastAPI (bytes-based ingestion) and CLI.
-
-This module is intentionally framework-agnostic so it can be imported by FastAPI
-endpoints without modification.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,6 +21,7 @@ from typing import Iterable, List, Dict, Any, Union, Optional
 from uuid import uuid4
 
 import pdfplumber
+import io
 
 # ------------------------------
 # Logging setup (industry-style)
@@ -46,7 +43,7 @@ class PageRecord:
     filename: str
     page_number: int  # 1-indexed
     text: str
-    tables: List[List[List[Optional[str]]]]  # list of tables, each table = list of rows, each row = list of cell strings
+    tables: List[List[List[Optional[str]]]]
 
 
 # ------------------------------
@@ -55,7 +52,6 @@ class PageRecord:
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
 def _safe_stem(stem: str) -> str:
-    """Sanitize filename stem for safe filesystem writes."""
     cleaned = SAFE_FILENAME_RE.sub("-", stem).strip("-._")
     return cleaned or f"doc-{uuid4().hex[:8]}"
 
@@ -67,9 +63,6 @@ def _ensure_outdir(outdir: Union[str, Path]) -> Path:
 
 
 def _normalize_inputs(inputs: Iterable[Union[str, Path]]) -> List[Path]:
-    """Expand a list of input paths into concrete PDF file paths.
-    Accepts files and/or directories (recursively searches for *.pdf in dirs).
-    """
     pdfs: List[Path] = []
     for raw in inputs:
         p = Path(raw).expanduser().resolve()
@@ -79,7 +72,6 @@ def _normalize_inputs(inputs: Iterable[Union[str, Path]]) -> List[Path]:
             pdfs.extend(sorted(p.rglob("*.pdf")))
         else:
             logger.warning("Skipping non-PDF path: %s", p)
-    # Remove duplicates while preserving order
     seen = set()
     unique_pdfs: List[Path] = []
     for p in pdfs:
@@ -92,29 +84,24 @@ def _normalize_inputs(inputs: Iterable[Union[str, Path]]) -> List[Path]:
 
 
 # ------------------------------
-# Core extraction logic
+# Core extraction
 # ------------------------------
-
 def _extract_page(page: pdfplumber.page.Page, *, extract_tables: bool) -> Dict[str, Any]:
-    """Extract text and tables from a single pdfplumber page.
-    Returns a dict with keys: text, tables.
-    """
     try:
         text = page.extract_text() or ""
     except Exception as e:
-        logger.exception("Text extraction failed for a page: %s", e)
+        logger.exception("Text extraction failed: %s", e)
         text = ""
 
     tables: List[List[List[Optional[str]]]] = []
     if extract_tables:
         try:
             raw_tables = page.extract_tables()
-            # Normalize to strings (replace None with "") for JSON safety
             for tbl in raw_tables or []:
                 normalized = [[(cell if cell is not None else "") for cell in row] for row in tbl]
                 tables.append(normalized)
         except Exception as e:
-            logger.exception("Table extraction failed for a page: %s", e)
+            logger.exception("Table extraction failed: %s", e)
     return {"text": text, "tables": tables}
 
 
@@ -125,17 +112,6 @@ def extract_pdf(
     max_pages: int = 0,
     doc_id: Optional[str] = None,
 ) -> List[PageRecord]:
-    """Extract a PDF from disk into page-level records.
-
-    Args:
-        pdf_path: Path to a PDF file.
-        extract_tables: Whether to attempt table extraction.
-        max_pages: If > 0, process only the first N pages (useful for testing).
-        doc_id: Optional stable doc identifier; if None, a new UUID is created.
-
-    Returns:
-        List[PageRecord]
-    """
     p = Path(pdf_path).resolve()
     if not (p.exists() and p.is_file() and p.suffix.lower() == ".pdf"):
         raise FileNotFoundError(f"Not a valid PDF file: {p}")
@@ -154,7 +130,7 @@ def extract_pdf(
             rec = PageRecord(
                 doc_id=the_doc_id,
                 filename=p.name,
-                page_number=idx + 1,  # 1-indexed
+                page_number=idx + 1,
                 text=payload["text"],
                 tables=payload["tables"],
             )
@@ -170,11 +146,8 @@ def extract_pdf_from_bytes(
     max_pages: int = 0,
     doc_id: Optional[str] = None,
 ) -> List[PageRecord]:
-    """Extract a PDF from in-memory bytes (useful for FastAPI uploads)."""
     the_doc_id = doc_id or uuid4().hex
     records: List[PageRecord] = []
-
-    import io
 
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         total = len(pdf.pages)
@@ -198,13 +171,7 @@ def extract_pdf_from_bytes(
 # ------------------------------
 # Persistence
 # ------------------------------
-
 def save_processed(pages: List[PageRecord], outdir: Union[str, Path]) -> Path:
-    """Persist page records for a single document to JSON.
-
-    The output filename is derived from the original filename's stem.
-    Returns the path to the written JSON file.
-    """
     if not pages:
         raise ValueError("'pages' is empty; nothing to save.")
 
@@ -223,9 +190,33 @@ def save_processed(pages: List[PageRecord], outdir: Union[str, Path]) -> Path:
 
 
 # ------------------------------
+# New helper for FastAPI
+# ------------------------------
+def pdf_to_chunks(file_bytes: bytes, filename: str, output_dir: str = "data/processed") -> List[Dict[str, Any]]:
+    """Convenience wrapper for FastAPI: takes file bytes, extracts pages, saves JSON, returns chunks."""
+    pages = extract_pdf_from_bytes(file_bytes, filename)
+
+    chunks = []
+    for i, page in enumerate(pages):
+        chunks.append({
+            "filename": filename,
+            "chunk_id": i,
+            "content": page.content if hasattr(page, "content") else str(page)
+        })
+
+    # Save processed chunks to JSON
+    os.makedirs(output_dir, exist_ok=True)
+    safe_filename = filename.replace(" ", "-").replace("(", "").replace(")", "")
+    out_path = os.path.join(output_dir, f"{os.path.splitext(safe_filename)[0]}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(chunks, f, ensure_ascii=False, indent=2)
+
+    return chunks
+
+
+# ------------------------------
 # Orchestration
 # ------------------------------
-
 def process_pdfs(
     inputs: Iterable[Union[str, Path]],
     *,
@@ -233,13 +224,8 @@ def process_pdfs(
     extract_tables: bool = True,
     max_pages: int = 0,
 ) -> List[Path]:
-    """High-level function to process one or many PDFs from disk into JSON files.
-
-    Returns a list of output JSON file paths.
-    """
     pdf_files = _normalize_inputs(inputs)
     outputs: List[Path] = []
-
     for pdf_path in pdf_files:
         try:
             pages = extract_pdf(pdf_path, extract_tables=extract_tables, max_pages=max_pages)
@@ -251,35 +237,14 @@ def process_pdfs(
 
 
 # ------------------------------
-# CLI entrypoint
+# CLI
 # ------------------------------
-
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest PDF(s) into processed JSON.")
-    parser.add_argument(
-        "--input",
-        "-i",
-        nargs="+",
-        required=True,
-        help="One or more PDF files and/or directories containing PDFs.",
-    )
-    parser.add_argument(
-        "--outdir",
-        "-o",
-        default="data/processed",
-        help="Directory to write processed JSON files (default: data/processed)",
-    )
-    parser.add_argument(
-        "--no-tables",
-        action="store_true",
-        help="Disable table extraction to speed up processing.",
-    )
-    parser.add_argument(
-        "--max-pages",
-        type=int,
-        default=0,
-        help="Process only first N pages per PDF (0 = all). Useful for testing.",
-    )
+    parser.add_argument("--input", "-i", nargs="+", required=True)
+    parser.add_argument("--outdir", "-o", default="data/processed")
+    parser.add_argument("--no-tables", action="store_true")
+    parser.add_argument("--max-pages", type=int, default=0)
     return parser.parse_args(argv)
 
 

@@ -8,3 +8,5 @@ streamlit==1.48.1
 python-dotenv==1.1.1
 pdfplumber==0.11.7
 pinecone==7.3.0
+langchain_community 
+pypdf2

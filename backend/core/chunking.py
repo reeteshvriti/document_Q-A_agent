@@ -1,7 +1,11 @@
 import os
 import json
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from config import BASE_DIR, CHUNKS_DIR, PROCESSED_DIR
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+# Data directories
+PROCESSED_DIR = os.path.join(BASE_DIR, "data", "processed")
+CHUNKS_DIR = os.path.join(BASE_DIR, "data", "chunks")
 
 
 # Ensure chunks directory exists
