@@ -42,7 +42,7 @@ def ask(question: str = Query(..., description="Your question for the RAG system
     for src in result.get("sources", []):
         enhanced_sources.append({
             "filename": src.get("filename"),
-            "page_number": src.get("page_number", "N/A"),  # ✅ include page number
+            "page_number": src.get("page_number", "N/A"),  # include page number
             "text_preview": src.get("content", "")[:200]   # optional preview
         })
 
