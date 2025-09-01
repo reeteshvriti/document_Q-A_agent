@@ -68,37 +68,6 @@ document_Q-A_agent/
 
 ---
 
-##  Setup & Installation  
-
-###  Clone the repository  
-
-```bash
-git clone https://github.com/reeteshvriti/document_Q-A_agent
-cd document_Q-A_agent
-
-python -m venv myenv
-source myenv/bin/activate   # Git bash
-myenv\Scripts\activate      # windows powershell
-
-
-# Install dependencies
-
-- pip install -r requirements.txt
-
----
-
-## Create a .env file in the backend/ directory:
-
-OPENAI_API_KEY=your_openai_api_key
-PINECONE_API_KEY=your_pinecone_api_key
-PINECONE_ENV=your_pinecone_environment
-
-
-Run the FastAPI server
-
-cd backend
-uvicorn main:app --reload
-
 
 Future enhancements
 
